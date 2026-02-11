@@ -29,9 +29,8 @@ body {
   height: 120px;
   image-rendering: pixelated;
   cursor: grab;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  left: calc(50% - 60px);
+  top: calc(50% - 60px);
   transition: none;
 }
 #pet:active {
@@ -60,26 +59,28 @@ const actions = {
 // 核心状态变量
 let currentAction = 'normal';
 let frame = 0;
-let frameInterval;          // 动画帧切换定时器
-let walkInterval;           // 走动动画定时器
-let idleTimer = null;       // 待机状态下的随机动作定时器
-let isWalking = false;      // 是否正在走动
-let isDragging = false;     // 是否正在拖动
+let frameInterval;          
+let walkInterval;           
+let idleTimer = null;       
+let isWalking = false;      
+let isDragging = false;     
 let walkDirection = { x: 0, y: 0, speed: 0 };
-const DRAG_THRESHOLD = 5;   // 拖动判定阈值
-const PET_SIZE = 120;       // 宠物尺寸
-// 时间区间
+const DRAG_THRESHOLD = 5;   
+const PET_SIZE = 120;       
+// 固定时间区间
 const IDLE_MIN = 1000, IDLE_MAX = 4000;
 const WALK_MIN = 3000, WALK_MAX = 5000;
 const IDLE_ACT_MIN = 1000, IDLE_ACT_MAX = 4000;
 
 // 获取屏幕边界
 function getBounds() {
+  const clientW = document.documentElement.clientWidth;
+  const clientH = document.documentElement.clientHeight;
   return { 
-    minX: 0, 
-    minY: 0, 
-    maxX: document.documentElement.clientWidth - PET_SIZE, 
-    maxY: document.documentElement.clientHeight - PET_SIZE 
+    minX: 0,                  // 左边缘严格0
+    minY: 0,                  // 上边缘严格0
+    maxX: clientW - PET_SIZE, // 右边缘：屏幕宽-宠物宽
+    maxY: clientH - PET_SIZE  // 下边缘：屏幕高-宠物高
   };
 }
 
@@ -94,7 +95,6 @@ function startAnim() {
 
 // 切换动作
 function setAction(name, force = false) {
-  // 拖动/点击优先级高于其他动作
   if (!force && (isDragging || currentAction === 'click')) return;
   if (currentAction === name) return;
   
@@ -102,7 +102,6 @@ function setAction(name, force = false) {
   frame = 0;
   pet.src = actions[name][0];
   
-  // 切换到待机状态，立即启动定时器
   if (name === 'normal') {
     startIdleTimer();
   }
@@ -118,26 +117,39 @@ function initWalkDirection() {
   const mag = Math.hypot(walkDirection.x, walkDirection.y) || 1;
   walkDirection.x /= mag;
   walkDirection.y /= mag;
-  walkDirection.speed = rand(10, 15) / 10; // 走动速度
+  walkDirection.speed = rand(10, 15) / 10;
   
-  // 确保初始位置在边界内
+  // 校准初始位置
   const { minX, minY, maxX, maxY } = getBounds();
-  pet.style.left = `${Math.max(minX, Math.min(maxX, pet.offsetLeft))}px`;
-  pet.style.top = `${Math.max(minY, Math.min(maxY, pet.offsetTop))}px`;
+  let x = getPetX();
+  let y = getPetY();
+  pet.style.left = `${Math.max(minX, Math.min(maxX, x))}px`;
+  pet.style.top = `${Math.max(minY, Math.min(maxY, y))}px`;
+}
+
+// 获取当前X/Y纯数字值
+function getPetX() {
+  return parseFloat(pet.style.left) || 0;
+}
+function getPetY() {
+  return parseFloat(pet.style.top) || 0;
 }
 
 // 边界检测+反弹
 function checkBounds() {
   const { minX, minY, maxX, maxY } = getBounds();
-  let x = parseFloat(pet.style.left || pet.offsetLeft);
-  let y = parseFloat(pet.style.top || pet.offsetTop);
+  let x = getPetX();
+  let y = getPetY();
   let bounced = false;
 
-  if (x <= minX) { x = minX; walkDirection.x = Math.abs(walkDirection.x); bounced = true; }
-  else if (x >= maxX) { x = maxX; walkDirection.x = -Math.abs(walkDirection.x); bounced = true; }
-  
-  if (y <= minY) { y = minY; walkDirection.y = Math.abs(walkDirection.y); bounced = true; }
-  else if (y >= maxY) { y = maxY; walkDirection.y = -Math.abs(walkDirection.y); bounced = true; }
+  // 左边缘：小于0则强制设为0，方向反弹
+  if (x < minX) { x = minX; walkDirection.x = Math.abs(walkDirection.x); bounced = true; }
+  // 右边缘：大于最大值则强制设为最大值，方向反弹
+  else if (x > maxX) { x = maxX; walkDirection.x = -Math.abs(walkDirection.x); bounced = true; }
+  // 上边缘：小于0则强制设为0，方向反弹
+  if (y < minY) { y = minY; walkDirection.y = Math.abs(walkDirection.y); bounced = true; }
+  // 下边缘：大于最大值则强制设为最大值，方向反弹
+  else if (y > maxY) { y = maxY; walkDirection.y = -Math.abs(walkDirection.y); bounced = true; }
 
   if (bounced) {
     pet.style.left = `${x}px`;
@@ -158,9 +170,8 @@ function doWalk() {
     initWalkDirection();
   }
 
-  // 更新位置
-  let x = parseFloat(pet.style.left || pet.offsetLeft) + walkDirection.x * walkDirection.speed;
-  let y = parseFloat(pet.style.top || pet.offsetTop) + walkDirection.y * walkDirection.speed;
+  let x = getPetX() + walkDirection.x * walkDirection.speed;
+  let y = getPetY() + walkDirection.y * walkDirection.speed;
   pet.style.left = `${x}px`;
   pet.style.top = `${y}px`;
   
@@ -184,7 +195,6 @@ function triggerWalk() {
   stopWalk();
   walkInterval = setInterval(doWalk, 16);
   
-  // 3-5秒后停止走动，恢复待机
   setTimeout(() => {
     if (!isDragging && currentAction !== 'click') {
       stopWalk();
@@ -200,7 +210,6 @@ function triggerIdleAction() {
   const target = idleActions[Math.floor(Math.random() * idleActions.length)];
   setAction(target, true);
   
-  // 1-4秒后恢复待机
   setTimeout(() => {
     if (!isDragging && !isWalking && currentAction !== 'click') {
       setAction('normal');
@@ -210,12 +219,9 @@ function triggerIdleAction() {
 
 // 启动待机定时器
 function startIdleTimer() {
-  // 清除原有定时器
   clearTimeout(idleTimer);
-  // 仅在待机状态下启动定时器
   if (currentAction === 'normal' && !isDragging && !isWalking) {
     idleTimer = setTimeout(() => {
-      // 触发随机动作
       Math.random() > 0.5 ? triggerWalk() : triggerIdleAction();
     }, rand(IDLE_MIN, IDLE_MAX));
   }
@@ -234,36 +240,36 @@ function handleDrag(startX, startY) {
   stopIdleTimer();
   setAction('drag', true);
   
-  const petX = parseFloat(pet.style.left || pet.offsetLeft);
-  const petY = parseFloat(pet.style.top || pet.offsetTop);
+  const petX = getPetX();
+  const petY = getPetY();
   const { minX, minY, maxX, maxY } = getBounds();
 
-  // 移动处理
+  // 实时强制限制在四边缘内
   const handleMove = (x, y) => {
-    const nx = petX + x - startX;
-    const ny = petY + y - startY;
-    pet.style.left = `${Math.max(minX, Math.min(maxX, nx))}px`;
-    pet.style.top = `${Math.max(minY, Math.min(maxY, ny))}px`;
+    let nx = petX + x - startX;
+    let ny = petY + y - startY;
+    // 强制校准
+    nx = Math.max(minX, Math.min(maxX, nx));
+    ny = Math.max(minY, Math.min(maxY, ny));
+    pet.style.left = `${nx}px`;
+    pet.style.top = `${ny}px`;
   };
 
   // 结束拖动
   const handleEnd = () => {
     isDragging = false;
     setAction('normal', true);
-    // 移除事件监听
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     window.removeEventListener('touchmove', onTouchMove);
     window.removeEventListener('touchend', onTouchEnd);
   };
 
-  // 事件处理函数
   const onMouseMove = (e) => handleMove(e.clientX, e.clientY);
   const onMouseUp = () => handleEnd();
   const onTouchMove = (e) => handleMove(e.touches[0].clientX, e.touches[0].clientY);
   const onTouchEnd = () => handleEnd();
 
-  // 绑定事件
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
   window.addEventListener('touchmove', onTouchMove);
@@ -278,7 +284,6 @@ function handleClick() {
   stopIdleTimer();
   setAction('click', true);
   
-  // 2秒后恢复待机
   setTimeout(() => {
     if (!isDragging) {
       setAction('normal', true);
@@ -286,16 +291,14 @@ function handleClick() {
   }, 2000);
 }
 
-// 拖动处理
+// 通用按下处理
 function handleDown(startX, startY, onUp) {
   let dragTimer = setTimeout(() => {
     handleDrag(startX, startY);
   }, 100);
 
-  // 松开判定
   const checkUp = (endX, endY) => {
     clearTimeout(dragTimer);
-    // 计算位移，小于阈值则判定为点击
     const dx = endX - startX;
     const dy = endY - startY;
     if (Math.hypot(dx, dy) < DRAG_THRESHOLD) {
@@ -339,11 +342,13 @@ pet.addEventListener('touchstart', (e) => {
   window.addEventListener('touchend', onTouchEnd);
 });
 
-// 窗口大小变化时调整位置
+// 窗口大小变化时实时校准位置
 window.addEventListener('resize', () => {
   const { minX, minY, maxX, maxY } = getBounds();
-  pet.style.left = `${Math.max(minX, Math.min(maxX, pet.offsetLeft))}px`;
-  pet.style.top = `${Math.max(minY, Math.min(maxY, pet.offsetTop))}px`;
+  let x = getPetX();
+  let y = getPetY();
+  pet.style.left = `${Math.max(minX, Math.min(maxX, x))}px`;
+  pet.style.top = `${Math.max(minY, Math.min(maxY, y))}px`;
   
   if (isWalking) initWalkDirection();
 });
