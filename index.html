@@ -129,10 +129,10 @@ function initWalkDirection() {
 
 // 获取当前X/Y纯数字值
 function getPetX() {
-  return parseFloat(pet.style.left) || 0;
+  return parseFloat(pet.style.left) || pet.offsetLeft;
 }
 function getPetY() {
-  return parseFloat(pet.style.top) || 0;
+  return parseFloat(pet.style.top) || pet.offsetTop;
 }
 
 // 边界检测+反弹
@@ -359,3 +359,4 @@ setAction('normal');
 </script>
 </body>
 </html>
+
