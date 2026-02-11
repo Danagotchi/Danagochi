@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Danagotchi</title>
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+}
+body{
+  overflow:hidden;
+  background:#000;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+#room{
+  position:relative;
+  width:100vw;
+  height:100vh;
+  background-image:url('room.png');
+  background-size:cover;
+  background-position:center;
+  overflow:hidden;
+}
+#pet{
+  position:absolute;
+  width:120px;
+  height:120px;
+  image-rendering:pixelated;
+  cursor:grab;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+}
+#pet:active{
+  cursor:grabbing;
+}
+</style>
+</head>
+<body>
+<div id="room">
+  <img id="pet" src="normal1.png">
+</div>
+
+<script>
+const pet = document.getElementById('pet');
+const room = document.getElementById('room');
+
+// 动作配置
+const actions = {
+  normal: ['normal1.png','normal2.png'],
+  click: ['click1.png','click2.png'],
+  walk: ['walk1.png','walk2.png'],
+  sit: ['sit1.png','sit2.png'],
+  lie: ['lie1.png','lie2.png'],
+  sleep: ['sleep1.png','sleep2.png'],
+  drag: ['drag1.png','drag2.png']
+};
+
+let currentAction = 'normal';
+let frame = 0;
+let frameInterval;
+let moveInterval;
+let idleActionInterval;
+
+let isDragging = false;
+let startX, startY, petX, petY;
+
+// 房间边界
+function getBounds(){
+  const w = room.clientWidth - 120;
+  const h = room.clientHeight - 120;
+  return {w,h};
+}
+
+// 动画帧循环
+function startAnim(){
+  clearInterval(frameInterval);
+  frameInterval = setInterval(()=>{
+    frame = 1 - frame;
+    pet.src = actions[currentAction][frame];
+  },500);
+}
+
+// 切换动作
+function setAction(name){
+  if(currentAction === name) return;
+  currentAction = name;
+  frame = 0;
+  pet.src = actions[name][0];
+}
+
+// 随机数
+function rand(min,max){
+  return Math.random()*(max-min)+min;
+}
+
+// 随机待机动作
+const idleActions = ['sit','lie','sleep'];
+function randomIdleAction(){
+  if(isDragging) return;
+  setAction(idleActions[Math.floor(rand(0,idleActions.length))]);
+  setTimeout(()=>{
+    if(!isDragging) setAction('normal');
+  },rand(3000,5000));
+}
+
+// 随机走动
+function randomWalk(){
+  if(isDragging) return;
+  setAction('walk');
+  const {w,h} = getBounds();
+  const tx = rand(0,w);
+  const ty = rand(0,h);
+  const speed = rand(0.1,0.2);
+  const dx = tx - pet.offsetLeft;
+  const dy = ty - pet.offsetTop;
+  const dist = Math.hypot(dx,dy);
+  const duration = dist / speed;
+  pet.style.transition = `left ${duration}ms linear, top ${duration}ms linear`;
+  pet.style.left = tx + 'px';
+  pet.style.top = ty + 'px';
+  setTimeout(()=>{
+    if(isDragging) return;
+    pet.style.transition = 'none';
+    setAction('normal');
+  },duration);
+}
+
+// 自动行为
+function startAI(){
+  clearInterval(moveInterval);
+  clearInterval(idleActionInterval);
+  moveInterval = setInterval(randomWalk, rand(2000,5000));
+  idleActionInterval = setInterval(randomIdleAction, rand(3000,5000));
+}
+
+// 点击
+pet.addEventListener('click',()=>{
+  if(isDragging) return;
+  setAction('click');
+  setTimeout(()=>setAction('normal'),800);
+});
+
+// 拖动 - 电脑
+pet.addEventListener('mousedown',(e)=>{
+  isDragging = true;
+  setAction('drag');
+  clearInterval(moveInterval);
+  clearInterval(idleActionInterval);
+  pet.style.transition = 'none';
+  startX = e.clientX;
+  startY = e.clientY;
+  petX = pet.offsetLeft;
+  petY = pet.offsetTop;
+  e.preventDefault();
+});
+
+// 拖动 - 手机
+pet.addEventListener('touchstart',(e)=>{
+  isDragging = true;
+  setAction('drag');
+  clearInterval(moveInterval);
+  clearInterval(idleActionInterval);
+  pet.style.transition = 'none';
+  const t = e.touches[0];
+  startX = t.clientX;
+  startY = t.clientY;
+  petX = pet.offsetLeft;
+  petY = pet.offsetTop;
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove',(e)=>{
+  if(!isDragging) return;
+  const nx = petX + e.clientX - startX;
+  const ny = petY + e.clientY - startY;
+  pet.style.left = nx + 'px';
+  pet.style.top = ny + 'px';
+});
+
+window.addEventListener('touchmove',(e)=>{
+  if(!isDragging) return;
+  const t = e.touches[0];
+  const nx = petX + t.clientX - startX;
+  const ny = petY + t.clientY - startY;
+  pet.style.left = nx + 'px';
+  pet.style.top = ny + 'px';
+  e.preventDefault();
+});
+
+window.addEventListener('mouseup',()=>{
+  if(!isDragging) return;
+  isDragging = false;
+  setAction('normal');
+  startAI();
+});
+
+window.addEventListener('touchend',()=>{
+  if(!isDragging) return;
+  isDragging = false;
+  setAction('normal');
+  startAI();
+});
+
+// 启动
+startAnim();
+setAction('normal');
+startAI();
+</script>
+</body>
+</html>
