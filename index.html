@@ -125,8 +125,8 @@ function initWalkDirection() {
   walkDirection.x = rand(-1, 1);
   walkDirection.y = rand(-1, 1);
   
-  // 随机速度（0.5 ~ 1.2 像素/帧）
-  walkDirection.speed = rand(0.5, 1.2);
+  // 随机速度
+  walkDirection.speed = rand(1, 1.5);
   
   // 归一化方向向量（确保斜向移动速度和横向一致）
   const mag = Math.hypot(walkDirection.x, walkDirection.y) || 1;
@@ -451,3 +451,4 @@ startAI();         // 启动自动行为
 </script>
 </body>
 </html>
+
