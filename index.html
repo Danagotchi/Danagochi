@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Danagotchi</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #eddb94;
+  position: relative;
+}
+
+#pet {
+  width: 120px;
+  height: 120px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  cursor: grab;
+  z-index: 10;
+}
+
+#pet:active {
+  cursor: grabbing;
+}
+</style>
+</head>
+<body>
+<div id="pet"></div>
+
+<script>
+const pet = document.getElementById('pet');
+
+// 动作帧配置
+const frames = {
+  normal: ['normal1.png', 'normal2.png'],
+  click: ['click1.png', 'click2.png'],
+  walk: ['walk1.png', 'walk2.png'],
+  sit: ['sit1.png', 'sit2.png'],
+  lie: ['lie1.png', 'lie2.png'],
+  sleep: ['sleep1.png', 'sleep2.png'],
+  drag: ['drag1.png', 'drag2.png'],
+};
+
+// 状态
+let currentAction = 'normal';
+let frameIndex = 0;
+let animInterval;
+let moveTimer;
+let idleTimer;
+let isDragging = false;
+let startX, startY, offsetX, offsetY;
+
+// 边界
+let maxX, maxY;
+
+// 一秒2帧 = 500ms/帧
+const FRAME_DELAY = 500;
+
+// 初始化
+function init() {
+  updateBounds();
+  switchAction('normal');
+  startIdleLoop();
+  window.addEventListener('resize', updateBounds);
+  initDrag();
+  initClick();
+}
+
+// 切换动作
+function switchAction(action) {
+  if (isDragging) return;
+  if (currentAction === action) return;
+
+  currentAction = action;
+  frameIndex = 0;
+  clearInterval(animInterval);
+  playAnimation();
+}
+
+// 帧动画
+function playAnimation() {
+  const list = frames[currentAction];
+  animInterval = setInterval(() => {
+    pet.style.backgroundImage = `url(${list[frameIndex]})`;
+    frameIndex = (frameIndex + 1) % 2;
+  }, FRAME_DELAY);
+}
+
+// 随机数
+function rand(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+// 边界更新
+function updateBounds() {
+  maxX = window.innerWidth - 120;
+  maxY = window.innerHeight - 120;
+}
+
+// 待机循环
+function startIdleLoop() {
+  clearTimeout(moveTimer);
+  clearTimeout(idleTimer);
+
+  if (isDragging) return;
+
+  moveTimer = setTimeout(() => {
+    if (isDragging) return;
+    startWalking();
+  }, rand(2000, 5000));
+}
+
+// 走路
+function startWalking() {
+  switchAction('walk');
+  const duration = rand(3000, 5000);
+  const startTime = performance.now();
+
+  const startLeft = pet.offsetLeft;
+  const startTop = pet.offsetTop;
+
+  const angle = rand(0, Math.PI * 2);
+  const speed = rand(0.05, 0.12);
+
+  function walkStep(now) {
+    if (isDragging || currentAction !== 'walk') return;
+    const t = now - startTime;
+    if (t > duration) {
+      switchAction('normal');
+      startIdleLoop();
+      return;
+    }
+    let x = startLeft + Math.cos(angle) * speed * t;
+    let y = startTop + Math.sin(angle) * speed * t;
+
+    if (x < 0) x = 0;
+    if (x > maxX) x = maxX;
+    if (y < 0) y = 0;
+    if (y > maxY) y = maxY;
+
+    pet.style.left = `${x}px`;
+    pet.style.top = `${y}px`;
+    requestAnimationFrame(walkStep);
+  }
+  requestAnimationFrame(walkStep);
+}
+
+// 待机随机动作
+function startIdleAction() {
+  if (isDragging || currentAction !== 'normal') return;
+  const actions = ['sit', 'lie', 'sleep'];
+  const act = actions[Math.floor(rand(0, actions.length))];
+  switchAction(act);
+
+  setTimeout(() => {
+    if (isDragging) return;
+    if (currentAction === act) {
+      switchAction('normal');
+    }
+  }, rand(3000, 5000));
+}
+
+// 点击
+function initClick() {
+  pet.addEventListener('click', () => {
+    if (isDragging) return;
+    switchAction('click');
+    setTimeout(() => {
+      if (isDragging) return;
+      switchAction('normal');
+    }, 1000);
+  });
+}
+
+// 拖拽
+function initDrag() {
+  // 鼠标
+  pet.addEventListener('mousedown', dragStart);
+  window.addEventListener('mousemove', dragMove);
+  window.addEventListener('mouseup', dragEnd);
+
+  // 触摸
+  pet.addEventListener('touchstart', dragStart, { passive: false });
+  window.addEventListener('touchmove', dragMove, { passive: false });
+  window.addEventListener('touchend', dragEnd);
+}
+
+function dragStart(e) {
+  e.preventDefault();
+  isDragging = true;
+  clearTimeout(moveTimer);
+  clearTimeout(idleTimer);
+  switchAction('drag');
+
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  offsetX = clientX - pet.offsetLeft;
+  offsetY = clientY - pet.offsetTop;
+}
+
+function dragMove(e) {
+  if (!isDragging) return;
+  e.preventDefault();
+
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  let x = clientX - offsetX;
+  let y = clientY - offsetY;
+
+  if (x < 0) x = 0;
+  if (x > maxX) x = maxX;
+  if (y < 0) y = 0;
+  if (y > maxY) y = maxY;
+
+  pet.style.left = `${x}px`;
+  pet.style.top = `${y}px`;
+}
+
+function dragEnd(e) {
+  if (!isDragging) return;
+  isDragging = false;
+  switchAction('normal');
+  startIdleLoop();
+}
+
+init();
+</script>
+</body>
+</html>
