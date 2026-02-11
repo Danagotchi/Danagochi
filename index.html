@@ -15,16 +15,12 @@
 body {
   overflow: hidden;
   background: #e8e6d9;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   height: 100vh;
 }
 #room {
   position: relative;
   width: 100vw;
   height: 100vh;
-  background-color: #e8e6d9;
   overflow: hidden;
 }
 #pet {
@@ -66,14 +62,18 @@ let currentAction = 'normal';
 let frame = 0;
 let frameInterval;          // 动画帧切换定时器
 let walkInterval;           // 走动动画定时器
-let idleTimer = null;       // 待机状态下的随机动作定时器（仅待机时存在）
+let idleTimer = null;       // 待机状态下的随机动作定时器
 let isWalking = false;      // 是否正在走动
 let isDragging = false;     // 是否正在拖动
 let walkDirection = { x: 0, y: 0, speed: 0 };
 const DRAG_THRESHOLD = 5;   // 拖动判定阈值
 const PET_SIZE = 120;       // 宠物尺寸
+// 时间区间
+const IDLE_MIN = 1000, IDLE_MAX = 4000;
+const WALK_MIN = 3000, WALK_MAX = 5000;
+const IDLE_ACT_MIN = 1000, IDLE_ACT_MAX = 4000;
 
-// 获取屏幕边界（简化版）
+// 获取屏幕边界
 function getBounds() {
   return { 
     minX: 0, 
@@ -83,7 +83,7 @@ function getBounds() {
   };
 }
 
-// 动画帧循环（固定500ms/帧，1秒2帧）
+// 动画帧循环
 function startAnim() {
   clearInterval(frameInterval);
   frameInterval = setInterval(() => {
@@ -92,9 +92,9 @@ function startAnim() {
   }, 500);
 }
 
-// 切换动作（带优先级控制）
+// 切换动作
 function setAction(name, force = false) {
-  // 拖动/点击优先级高于其他动作（非强制不切换）
+  // 拖动/点击优先级高于其他动作
   if (!force && (isDragging || currentAction === 'click')) return;
   if (currentAction === name) return;
   
@@ -102,24 +102,23 @@ function setAction(name, force = false) {
   frame = 0;
   pet.src = actions[name][0];
   
-  // 仅当切换到待机状态时，启动随机动作定时器
-  if (name === 'normal' && !idleTimer) {
+  // 切换到待机状态，立即启动定时器
+  if (name === 'normal') {
     startIdleTimer();
   }
 }
 
-// 随机数生成（闭区间）
-const rand = (min, max) => Math.random() * (max - min) + min;
+// 随机数生成
+const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 // 初始化走动方向
 function initWalkDirection() {
-  // 随机方向向量（归一化）
-  walkDirection.x = rand(-1, 1);
-  walkDirection.y = rand(-1, 1);
+  walkDirection.x = rand(-10, 10) / 10;
+  walkDirection.y = rand(-10, 10) / 10;
   const mag = Math.hypot(walkDirection.x, walkDirection.y) || 1;
   walkDirection.x /= mag;
   walkDirection.y /= mag;
-  walkDirection.speed = rand(1, 1.5); // 走动速度
+  walkDirection.speed = rand(10, 15) / 10; // 走动速度
   
   // 确保初始位置在边界内
   const { minX, minY, maxX, maxY } = getBounds();
@@ -146,7 +145,7 @@ function checkBounds() {
   }
 }
 
-// 走动逻辑（60fps）
+// 走动逻辑
 function doWalk() {
   if (isDragging || currentAction === 'click') {
     stopWalk();
@@ -178,7 +177,7 @@ function stopWalk() {
   }
 }
 
-// 触发随机走动（3-5秒后停止）
+// 触发随机走动
 function triggerWalk() {
   if (isDragging || currentAction === 'click' || isWalking) return;
   
@@ -190,15 +189,15 @@ function triggerWalk() {
     if (!isDragging && currentAction !== 'click') {
       stopWalk();
     }
-  }, rand(3000, 5000));
+  }, rand(WALK_MIN, WALK_MAX));
 }
 
-// 触发随机原地动作（1-4秒后恢复待机）
+// 触发随机原地动作
 function triggerIdleAction() {
   if (isDragging || currentAction === 'click' || isWalking) return;
   
   const idleActions = ['sit', 'lie', 'sleep'];
-  const target = idleActions[Math.floor(rand(0, idleActions.length))];
+  const target = idleActions[Math.floor(Math.random() * idleActions.length)];
   setAction(target, true);
   
   // 1-4秒后恢复待机
@@ -206,23 +205,20 @@ function triggerIdleAction() {
     if (!isDragging && !isWalking && currentAction !== 'click') {
       setAction('normal');
     }
-  }, rand(1000, 4000));
+  }, rand(IDLE_ACT_MIN, IDLE_ACT_MAX));
 }
 
-// 启动待机定时器（仅在待机时运行，1-4秒触发一次随机动作）
+// 启动待机定时器
 function startIdleTimer() {
+  // 清除原有定时器
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => {
-    // 仅待机状态下触发
-    if (currentAction === 'normal' && !isDragging && !isWalking) {
-      // 50%概率走动，50%概率原地动作
+  // 仅在待机状态下启动定时器
+  if (currentAction === 'normal' && !isDragging && !isWalking) {
+    idleTimer = setTimeout(() => {
+      // 触发随机动作
       Math.random() > 0.5 ? triggerWalk() : triggerIdleAction();
-    }
-    // 只有仍在待机状态才重启定时器
-    if (currentAction === 'normal' && !isDragging && !isWalking) {
-      startIdleTimer();
-    }
-  }, rand(1000, 4000));
+    }, rand(IDLE_MIN, IDLE_MAX));
+  }
 }
 
 // 停止待机定时器
@@ -231,7 +227,7 @@ function stopIdleTimer() {
   idleTimer = null;
 }
 
-// 处理拖动逻辑（通用）
+// 处理拖动逻辑
 function handleDrag(startX, startY) {
   isDragging = true;
   stopWalk();
@@ -290,7 +286,7 @@ function handleClick() {
   }, 2000);
 }
 
-// 通用按下处理（PC+移动端）
+// 拖动处理
 function handleDown(startX, startY, onUp) {
   let dragTimer = setTimeout(() => {
     handleDrag(startX, startY);
@@ -355,7 +351,6 @@ window.addEventListener('resize', () => {
 // 初始化
 startAnim();
 setAction('normal');
-startIdleTimer();
 </script>
 </body>
 </html>
