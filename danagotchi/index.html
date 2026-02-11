@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>生日拓麻歌子电子宠物</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background: #fae8d4;
+    height:100vh;
+    overflow:hidden;
+    cursor:grab;
+    /* 房间背景图 ↓ 你可以换成自己的房间图 */
+    background-image: url('room.png');
+    background-size: cover;
+    background-position: center;
+  }
+  #pet{
+    width:120px;
+    height:120px;
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    user-select:none;
+    cursor:grab;
+    transition:all 0.25s linear;
+  }
+  #pet:active{cursor:grabbing}
+</style>
+</head>
+
+<body>
+<img id="pet" src="">
+
+<script>
+const pet = document.getElementById('pet');
+
+// 你自己画的两帧图片
+const imgs = {
+  normal: ['normal1.png','normal2.png'],
+  click:  ['click1.png','click2.png'],
+  drag:   ['drag1.png','drag2.png'],
+  walk:   ['walk1.png','walk2.png'],
+  sit:    ['sit1.png','sit2.png'],
+  lie:    ['lie1.png','lie2.png'],
+  sleep:  ['sleep1.png','sleep2.png'],
+  land:   ['land1.png','land2.png']
+};
+
+let currentMode = 'normal';
+let frame = 0;
+let isDragging = false;
+let isWalking = false;
+let dragStart = false;
+let startX, startY;
+let offsetX, offsetY;
+
+// 帧动画循环
+setInterval(() => {
+  if (!imgs[currentMode]) return;
+  frame = 1 - frame;
+  pet.src = imgs[currentMode][frame];
+}, 200);
+
+function setMode(m) {
+  currentMode = m;
+  frame = 0;
+  pet.src = imgs[m][0];
+}
+
+// ----------------------
+// 点击 / 拖动 分离
+// ----------------------
+pet.addEventListener('mousedown', e => {
+  dragStart = true;
+  startX = e.clientX;
+  startY = e.clientY;
+  const rect = pet.getBoundingClientRect();
+  offsetX = e.clientX - rect.left;
+  offsetY = e.clientY - rect.top;
+  pet.style.transition = 'none';
+});
+
+document.addEventListener('mousemove', e => {
+  if (!dragStart) return;
+  const dx = Math.abs(e.clientX - startX);
+  const dy = Math.abs(e.clientY - startY);
+
+  if (dx > 5 || dy > 5) {
+    if (!isDragging) {
+      isDragging = true;
+      setMode('drag');
+    }
+
+    // 让宠物不会跑出屏幕
+    const w = window.innerWidth - 120;
+    const h = window.innerHeight - 120;
+    let x = e.clientX - offsetX;
+    let y = e.clientY - offsetY;
+    if (x < 0) x = 0;
+    if (x > w) x = w;
+    if (y < 0) y = 0;
+    if (y > h) y = h;
+
+    pet.style.left = x + 'px';
+    pet.style.top = y + 'px';
+  }
+});
+
+document.addEventListener('mouseup', e => {
+  if (!dragStart) return;
+
+  if (!isDragging) {
+    // 纯点击
+    setMode('click');
+    setTimeout(() => setMode('normal'), 300);
+  } else {
+    // 拖动结束 → 落地动画
+    setMode('land');
+    setTimeout(() => setMode('normal'), 600);
+  }
+
+  pet.style.transition = 'all 0.25s linear';
+  isDragging = false;
+  dragStart = false;
+  restartIdle();
+});
+
+// ----------------------
+// 随机走路（不跑出房间）
+// ----------------------
+function randomWalk() {
+  if (isDragging || isWalking) return;
+  isWalking = true;
+  setMode('walk');
+
+  const w = window.innerWidth - 120;
+  const h = window.innerHeight - 120;
+  const nx = Math.random() * w;
+  const ny = Math.random() * h;
+
+  pet.style.left = nx + 'px';
+  pet.style.top = ny + 'px';
+
+  setTimeout(() => {
+    isWalking = false;
+    setMode('normal');
+  }, 3000);
+}
+
+// ----------------------
+// 闲置动作：坐下/趴下/睡觉
+// ----------------------
+let idleTimer;
+const idleList = ['sit','lie','sleep'];
+
+function idleAction() {
+  if (isDragging || isWalking) return;
+  const act = idleList[Math.floor(Math.random()*idleList.length)];
+  setMode(act);
+}
+
+function restartIdle() {
+  clearTimeout(idleTimer);
+  setMode('normal');
+  idleTimer = setTimeout(() => {
+    idleAction();
+    setInterval(idleAction, 9000);
+  }, 5000);
+}
+
+// 启动
+restartIdle();
+setInterval(randomWalk, 7000);
+</script>
+</body>
+</html>
