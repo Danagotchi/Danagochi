@@ -15,7 +15,7 @@
 }
 body{
   overflow:hidden;
-  background:#e8e6d9;
+  background:#e8e6d9; /* 固定背景色 */
   display:flex;
   justify-content:center;
   align-items:center;
@@ -25,7 +25,7 @@ body{
   position:relative;
   width:100vw;
   height:100vh;
-  background-color: #e8e6d9;
+  background-color: #e8e6d9; /* 确保背景色统一 */
   overflow:hidden;
 }
 #pet{
@@ -37,7 +37,7 @@ body{
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-  transition: none;
+  transition: none; /* 移除默认过渡，避免拖动卡顿 */
 }
 #pet:active{
   cursor:grabbing;
@@ -66,18 +66,19 @@ const actions = {
 
 let currentAction = 'normal';
 let frame = 0;
-let frameInterval;          
-let walkInterval;           
-let idleActionTimer;        // 仅待机时生效的随机动作定时器
-let randomWalkTimer;        // 仅待机时生效的随机走动定时器
-let isWalking = false;      
-let isDragging = false;     
-let walkDirection = { x: 0, y: 0, speed: 0 };
-let dragStartTimer = null;  
-let startPos = { x: 0, y: 0 };
-const DRAG_THRESHOLD = 5;   
+let frameInterval;          // 动画帧切换定时器（1秒2帧）
+let walkInterval;           // 走动动画定时器
+let idleActionTimer;        // 待机动作定时器
+let randomWalkTimer;        // 随机走动触发定时器
+let isWalking = false;      // 是否正在走动
+let isDragging = false;     // 是否正在拖动
+let walkDirection = { x: 0, y: 0, speed: 0 }; // 走动方向和速度
+// 新增：拖动判定相关变量
+let dragStartTimer = null;  // 拖动延迟判定定时器
+let startPos = { x: 0, y: 0 }; // 按下时的初始位置
+const DRAG_THRESHOLD = 5;   // 判定为拖动的最小位移（像素）
 
-// 房间边界计算
+// 房间边界计算（确保宠物在可视范围内）
 function getBounds() {
   const viewW = document.documentElement.clientWidth;
   const viewH = document.documentElement.clientHeight;
@@ -91,31 +92,24 @@ function getBounds() {
   };
 }
 
-// 动画帧循环
+// 动画帧循环（严格1秒2帧，500ms/帧）
 function startAnim() {
   clearInterval(frameInterval);
   frameInterval = setInterval(() => {
-    frame = 1 - frame;
+    frame = 1 - frame; // 0 ↔ 1 切换帧
     pet.src = actions[currentAction][frame];
-  }, 500);
+  }, 500); // 500ms切换 → 1秒2帧
 }
 
 // 切换动作（带优先级控制）
 function setAction(name, force = false) {
+  // 非强制时：拖动/点击动作优先级更高，不允许切换
   if (!force && (isDragging || currentAction === 'click')) return;
   if (currentAction === name) return;
   
   currentAction = name;
-  frame = 0;
+  frame = 0; // 重置到第一帧
   pet.src = actions[name][0];
-  // 关键修改1：切换动作后，非normal状态立即清除所有定时器（暂停计时）
-  if (name !== 'normal') {
-    clearInterval(randomWalkTimer);
-    clearTimeout(idleActionTimer);
-  } else {
-    // 恢复normal待机时，重新启动定时器（继续计时）
-    startAI();
-  }
 }
 
 // 随机数生成（闭区间）
@@ -123,15 +117,23 @@ function rand(min, max) {
   return Math.random() * (max - min) + min;
 }
 
-// 初始化走动方向
+// 初始化走动方向（随机方向+速度）
 function initWalkDirection() {
   const { minX, minY, maxX, maxY } = getBounds();
+  
+  // 随机方向（-1 ~ 1）
   walkDirection.x = rand(-1, 1);
   walkDirection.y = rand(-1, 1);
+  
+  // 随机速度（0.5 ~ 1.2 像素/帧）
   walkDirection.speed = rand(0.5, 1.2);
+  
+  // 归一化方向向量（确保斜向移动速度和横向一致）
   const mag = Math.hypot(walkDirection.x, walkDirection.y) || 1;
   walkDirection.x /= mag;
   walkDirection.y /= mag;
+  
+  // 确保宠物初始位置在边界内
   const x = Math.max(minX, Math.min(maxX, pet.offsetLeft));
   const y = Math.max(minY, Math.min(maxY, pet.offsetTop));
   pet.style.left = `${x}px`;
@@ -144,6 +146,8 @@ function checkBoundsAndBounce() {
   let x = pet.offsetLeft;
   let y = pet.offsetTop;
   let bounced = false;
+
+  // 左右边界反弹
   if (x <= minX) {
     x = minX;
     walkDirection.x = Math.abs(walkDirection.x);
@@ -153,6 +157,8 @@ function checkBoundsAndBounce() {
     walkDirection.x = -Math.abs(walkDirection.x);
     bounced = true;
   }
+
+  // 上下边界反弹
   if (y <= minY) {
     y = minY;
     walkDirection.y = Math.abs(walkDirection.y);
@@ -162,27 +168,37 @@ function checkBoundsAndBounce() {
     walkDirection.y = -Math.abs(walkDirection.y);
     bounced = true;
   }
+
+  // 更新位置（如果反弹了则强制修正位置）
   if (bounced) {
     pet.style.left = `${x}px`;
     pet.style.top = `${y}px`;
   }
 }
 
-// 持续走动逻辑
+// 持续走动逻辑（60fps刷新）
 function continuousWalk() {
+  // 高优先级动作打断走动
   if (isDragging || currentAction === 'click') {
     stopWalking();
     return;
   }
+
   if (!isWalking) {
     setAction('walk');
     isWalking = true;
     initWalkDirection();
   }
+
+  // 计算新位置
   let x = pet.offsetLeft + walkDirection.x * walkDirection.speed;
   let y = pet.offsetTop + walkDirection.y * walkDirection.speed;
+  
+  // 更新位置
   pet.style.left = `${x}px`;
   pet.style.top = `${y}px`;
+  
+  // 边界检测+反弹
   checkBoundsAndBounce();
 }
 
@@ -193,17 +209,24 @@ function stopWalking() {
     walkInterval = null;
   }
   isWalking = false;
+  // 只有非拖动/非点击状态才恢复普通待机
   if (!isDragging && currentAction !== 'click') {
-    setAction('normal'); // 恢复待机，触发startAI重启定时器
+    setAction('normal');
   }
 }
 
-// 触发随机走动
+// 触发随机走动（2-5秒后启动，持续3-5秒）
 function triggerRandomWalk() {
-  // 关键修改2：仅待机状态可触发
-  if (currentAction !== 'normal' || isDragging || isWalking) return;
+  // 如果正在拖动/点击/走动，不触发
+  if (isDragging || currentAction === 'click' || isWalking) return;
+
+  // 停止之前的走动（防止重复）
   stopWalking();
+  
+  // 启动走动（60fps）
   walkInterval = setInterval(continuousWalk, 16);
+  
+  // 3-5秒后停止走动
   setTimeout(() => {
     if (!isDragging && currentAction !== 'click') {
       stopWalking();
@@ -211,91 +234,118 @@ function triggerRandomWalk() {
   }, rand(3000, 5000));
 }
 
-// 随机触发待机动作
+// 随机触发待机动作（sit/lie/sleep）
 function randomIdleAction() {
-  // 关键修改3：仅待机状态可触发
-  if (currentAction !== 'normal' || isDragging || isWalking) return;
+  // 如果正在拖动/点击/走动，不触发
+  if (isDragging || currentAction === 'click' || isWalking) return;
+
   const idleActions = ['sit', 'lie', 'sleep'];
   const targetAction = idleActions[Math.floor(rand(0, idleActions.length))];
+  
+  // 切换到待机动作
   setAction(targetAction);
+  
+  // 3-5秒后恢复普通待机
   setTimeout(() => {
     if (!isDragging && !isWalking && currentAction !== 'click') {
-      setAction('normal'); // 恢复待机，触发startAI重启定时器
+      setAction('normal');
     }
   }, rand(3000, 5000));
 }
 
-// 启动自动行为（仅待机时运行，非待机时已被清除）
+// 启动自动行为
 function startAI() {
-  // 关键修改4：仅待机状态初始化定时器，避免重复创建
-  if (currentAction !== 'normal') return;
+  // 清除之前的定时器（防止重复）
   clearInterval(randomWalkTimer);
   clearTimeout(idleActionTimer);
 
-  // 2-5秒随机触发一次走动（仅待机计时）
+  // 2-5秒随机触发一次走动
   randomWalkTimer = setInterval(() => {
-    triggerRandomWalk();
+    if (!isDragging && currentAction !== 'click' && !isWalking) {
+      triggerRandomWalk();
+    }
   }, rand(2000, 5000));
 
-  // 3-5秒随机触发一次待机动作（仅待机计时）
+  // 3-5秒随机触发一次待机动作
   function scheduleIdleAction() {
-    if (currentAction !== 'normal') return;
+    if (isDragging || currentAction === 'click' || isWalking) {
+      idleActionTimer = setTimeout(scheduleIdleAction, 1000);
+      return;
+    }
     randomIdleAction();
     idleActionTimer = setTimeout(scheduleIdleAction, rand(3000, 5000));
   }
   scheduleIdleAction();
 }
 
-// 点击事件
+// 点击事件（优先级第二，强制打断）
 pet.addEventListener('click', (e) => {
   e.preventDefault();
   if (isDragging) return;
+
+  // 停止所有当前动作
   stopWalking();
   clearInterval(randomWalkTimer);
   clearTimeout(idleActionTimer);
+
+  // 强制切换到点击动作
   setAction('click', true);
+
+  // 800ms后恢复普通待机，并重启AI
   setTimeout(() => {
     if (!isDragging) {
-      setAction('normal', true); // 恢复待机，重启定时器
+      setAction('normal', true);
+      startAI();
     }
   }, 800);
 });
 
-// 通用拖动初始化逻辑
+// 新增：通用的拖动初始化逻辑（抽离复用）
 function initDrag(startX, startY) {
   isDragging = true;
+  // 强制停止所有动作
   stopWalking();
   clearInterval(randomWalkTimer);
   clearTimeout(idleActionTimer);
+  // 强制切换到拖动动作
   setAction('drag', true);
+  // 记录初始位置
   const petX = pet.offsetLeft;
   const petY = pet.offsetTop;
 
+  // 移动时更新位置（通用逻辑）
   function handleMove(moveX, moveY) {
     const { minX, minY, maxX, maxY } = getBounds();
     const nx = petX + moveX - startX;
     const ny = petY + moveY - startY;
+    // 限制在边界内
     const clampedX = Math.max(minX, Math.min(maxX, nx));
     const clampedY = Math.max(minY, Math.min(maxY, ny));
     pet.style.left = `${clampedX}px`;
     pet.style.top = `${clampedY}px`;
   }
 
+  // 结束拖动（通用逻辑）
   function handleEnd() {
     isDragging = false;
-    setAction('normal', true); // 恢复待机，重启定时器
+    setAction('normal', true);
+    startAI(); // 恢复自动行为
+    // 移除事件监听
     window.removeEventListener('mousemove', mouseMoveHandler);
     window.removeEventListener('mouseup', mouseUpHandler);
     window.removeEventListener('touchmove', touchMoveHandler);
     window.removeEventListener('touchend', touchEndHandler);
   }
 
+  // 电脑端移动/松开
   function mouseMoveHandler(e) {
     handleMove(e.clientX, e.clientY);
   }
   function mouseUpHandler() {
     handleEnd();
   }
+
+  // 移动端移动/松开
   function touchMoveHandler(e) {
     const touch = e.touches[0];
     handleMove(touch.clientX, touch.clientY);
@@ -304,76 +354,100 @@ function initDrag(startX, startY) {
     handleEnd();
   }
 
+  // 绑定事件（同时兼容两端，避免重复）
   window.addEventListener('mousemove', mouseMoveHandler);
   window.addEventListener('mouseup', mouseUpHandler);
   window.addEventListener('touchmove', touchMoveHandler);
   window.addEventListener('touchend', touchEndHandler);
 }
 
-// 电脑端拖动
+// 拖动事件 - 电脑端（优先级最高）【修改核心】
 pet.addEventListener('mousedown', (e) => {
   e.preventDefault();
+  // 记录按下的初始位置
   startPos.x = e.clientX;
   startPos.y = e.clientY;
+  
+  // 延迟100ms判定是否为拖动（给点击留时间）
   dragStartTimer = setTimeout(() => {
     initDrag(startPos.x, startPos.y);
   }, 100);
 
+  // 鼠标松开时先判断是否为拖动
   function checkMouseUp(e) {
+    // 清除延迟定时器
     clearTimeout(dragStartTimer);
+    // 计算位移距离
     const dx = e.clientX - startPos.x;
     const dy = e.clientY - startPos.y;
     const distance = Math.hypot(dx, dy);
+    
+    // 如果位移小于阈值，判定为点击（不触发拖动）
     if (distance < DRAG_THRESHOLD) {
+      // 手动触发click事件（确保点击逻辑执行）
       pet.click();
     }
+    // 移除临时监听
     window.removeEventListener('mouseup', checkMouseUp);
   }
+
   window.addEventListener('mouseup', checkMouseUp);
 });
 
-// 移动端拖动
+// 拖动事件 - 移动端（优先级最高）【修改核心】
 pet.addEventListener('touchstart', (e) => {
   e.preventDefault();
   const touch = e.touches[0];
+  // 记录按下的初始位置
   startPos.x = touch.clientX;
   startPos.y = touch.clientY;
+  
+  // 延迟100ms判定是否为拖动
   dragStartTimer = setTimeout(() => {
     initDrag(startPos.x, startPos.y);
   }, 100);
 
+  // 触摸结束时判断是否为拖动
   function checkTouchEnd(e) {
     clearTimeout(dragStartTimer);
     if (e.touches.length === 0) {
       const touch = e.changedTouches[0];
+      // 计算位移距离
       const dx = touch.clientX - startPos.x;
       const dy = touch.clientY - startPos.y;
       const distance = Math.hypot(dx, dy);
+      
+      // 位移小于阈值则判定为点击
       if (distance < DRAG_THRESHOLD) {
         pet.click();
       }
     }
+    // 移除临时监听
     window.removeEventListener('touchend', checkTouchEnd);
   }
+
   window.addEventListener('touchend', checkTouchEnd);
 });
 
-// 窗口大小变化
+// 窗口大小变化时重新计算边界
 window.addEventListener('resize', () => {
   const { minX, minY, maxX, maxY } = getBounds();
+  // 确保宠物始终在可视范围内
   const x = Math.max(minX, Math.min(maxX, pet.offsetLeft));
   const y = Math.max(minY, Math.min(maxY, pet.offsetTop));
   pet.style.left = `${x}px`;
   pet.style.top = `${y}px`;
+  
+  // 如果正在走动，重新初始化方向
   if (isWalking) {
     initWalkDirection();
   }
 });
 
 // 初始化
-startAnim();
-setAction('normal');
-startAI();
+startAnim();       // 启动帧动画循环
+setAction('normal'); // 初始动作
+startAI();         // 启动自动行为
 </script>
 </body>
 </html>
