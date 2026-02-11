@@ -73,6 +73,10 @@ let randomWalkTimer;        // 随机走动触发定时器
 let isWalking = false;      // 是否正在走动
 let isDragging = false;     // 是否正在拖动
 let walkDirection = { x: 0, y: 0, speed: 0 }; // 走动方向和速度
+// 新增：拖动判定相关变量
+let dragStartTimer = null;  // 拖动延迟判定定时器
+let startPos = { x: 0, y: 0 }; // 按下时的初始位置
+const DRAG_THRESHOLD = 5;   // 判定为拖动的最小位移（像素）
 
 // 房间边界计算（确保宠物在可视范围内）
 function getBounds() {
@@ -296,96 +300,133 @@ pet.addEventListener('click', (e) => {
   }, 800);
 });
 
-// 拖动事件 - 电脑端（优先级最高）
+// 新增：通用的拖动初始化逻辑（抽离复用）
+function initDrag(startX, startY) {
+  isDragging = true;
+  // 强制停止所有动作
+  stopWalking();
+  clearInterval(randomWalkTimer);
+  clearTimeout(idleActionTimer);
+  // 强制切换到拖动动作
+  setAction('drag', true);
+  // 记录初始位置
+  const petX = pet.offsetLeft;
+  const petY = pet.offsetTop;
+
+  // 移动时更新位置（通用逻辑）
+  function handleMove(moveX, moveY) {
+    const { minX, minY, maxX, maxY } = getBounds();
+    const nx = petX + moveX - startX;
+    const ny = petY + moveY - startY;
+    // 限制在边界内
+    const clampedX = Math.max(minX, Math.min(maxX, nx));
+    const clampedY = Math.max(minY, Math.min(maxY, ny));
+    pet.style.left = `${clampedX}px`;
+    pet.style.top = `${clampedY}px`;
+  }
+
+  // 结束拖动（通用逻辑）
+  function handleEnd() {
+    isDragging = false;
+    setAction('normal', true);
+    startAI(); // 恢复自动行为
+    // 移除事件监听
+    window.removeEventListener('mousemove', mouseMoveHandler);
+    window.removeEventListener('mouseup', mouseUpHandler);
+    window.removeEventListener('touchmove', touchMoveHandler);
+    window.removeEventListener('touchend', touchEndHandler);
+  }
+
+  // 电脑端移动/松开
+  function mouseMoveHandler(e) {
+    handleMove(e.clientX, e.clientY);
+  }
+  function mouseUpHandler() {
+    handleEnd();
+  }
+
+  // 移动端移动/松开
+  function touchMoveHandler(e) {
+    const touch = e.touches[0];
+    handleMove(touch.clientX, touch.clientY);
+  }
+  function touchEndHandler() {
+    handleEnd();
+  }
+
+  // 绑定事件（同时兼容两端，避免重复）
+  window.addEventListener('mousemove', mouseMoveHandler);
+  window.addEventListener('mouseup', mouseUpHandler);
+  window.addEventListener('touchmove', touchMoveHandler);
+  window.addEventListener('touchend', touchEndHandler);
+}
+
+// 拖动事件 - 电脑端（优先级最高）【修改核心】
 pet.addEventListener('mousedown', (e) => {
   e.preventDefault();
-  isDragging = true;
+  // 记录按下的初始位置
+  startPos.x = e.clientX;
+  startPos.y = e.clientY;
+  
+  // 延迟100ms判定是否为拖动（给点击留时间）
+  dragStartTimer = setTimeout(() => {
+    initDrag(startPos.x, startPos.y);
+  }, 100);
 
-  // 强制停止所有动作
-  stopWalking();
-  clearInterval(randomWalkTimer);
-  clearTimeout(idleActionTimer);
-
-  // 强制切换到拖动动作
-  setAction('drag', true);
-
-  // 记录初始位置
-  const startX = e.clientX;
-  const startY = e.clientY;
-  const petX = pet.offsetLeft;
-  const petY = pet.offsetTop;
-
-  // 鼠标移动时更新位置
-  function handleMouseMove(e) {
-    const { minX, minY, maxX, maxY } = getBounds();
-    const nx = petX + e.clientX - startX;
-    const ny = petY + e.clientY - startY;
-    // 限制在边界内
-    const clampedX = Math.max(minX, Math.min(maxX, nx));
-    const clampedY = Math.max(minY, Math.min(maxY, ny));
-    pet.style.left = `${clampedX}px`;
-    pet.style.top = `${clampedY}px`;
+  // 鼠标松开时先判断是否为拖动
+  function checkMouseUp(e) {
+    // 清除延迟定时器
+    clearTimeout(dragStartTimer);
+    // 计算位移距离
+    const dx = e.clientX - startPos.x;
+    const dy = e.clientY - startPos.y;
+    const distance = Math.hypot(dx, dy);
+    
+    // 如果位移小于阈值，判定为点击（不触发拖动）
+    if (distance < DRAG_THRESHOLD) {
+      // 手动触发click事件（确保点击逻辑执行）
+      pet.click();
+    }
+    // 移除临时监听
+    window.removeEventListener('mouseup', checkMouseUp);
   }
 
-  // 鼠标松开时结束拖动
-  function handleMouseUp() {
-    isDragging = false;
-    setAction('normal', true);
-    startAI(); // 恢复自动行为
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('mouseup', handleMouseUp);
-  }
-
-  // 绑定临时事件
-  window.addEventListener('mousemove', handleMouseMove);
-  window.addEventListener('mouseup', handleMouseUp);
+  window.addEventListener('mouseup', checkMouseUp);
 });
 
-// 拖动事件 - 移动端（优先级最高）
+// 拖动事件 - 移动端（优先级最高）【修改核心】
 pet.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  isDragging = true;
-
-  // 强制停止所有动作
-  stopWalking();
-  clearInterval(randomWalkTimer);
-  clearTimeout(idleActionTimer);
-
-  // 强制切换到拖动动作
-  setAction('drag', true);
-
-  // 记录初始位置
   const touch = e.touches[0];
-  const startX = touch.clientX;
-  const startY = touch.clientY;
-  const petX = pet.offsetLeft;
-  const petY = pet.offsetTop;
+  // 记录按下的初始位置
+  startPos.x = touch.clientX;
+  startPos.y = touch.clientY;
+  
+  // 延迟100ms判定是否为拖动
+  dragStartTimer = setTimeout(() => {
+    initDrag(startPos.x, startPos.y);
+  }, 100);
 
-  // 触摸移动时更新位置
-  function handleTouchMove(e) {
-    const touch = e.touches[0];
-    const { minX, minY, maxX, maxY } = getBounds();
-    const nx = petX + touch.clientX - startX;
-    const ny = petY + touch.clientY - startY;
-    // 限制在边界内
-    const clampedX = Math.max(minX, Math.min(maxX, nx));
-    const clampedY = Math.max(minY, Math.min(maxY, ny));
-    pet.style.left = `${clampedX}px`;
-    pet.style.top = `${clampedY}px`;
+  // 触摸结束时判断是否为拖动
+  function checkTouchEnd(e) {
+    clearTimeout(dragStartTimer);
+    if (e.touches.length === 0) {
+      const touch = e.changedTouches[0];
+      // 计算位移距离
+      const dx = touch.clientX - startPos.x;
+      const dy = touch.clientY - startPos.y;
+      const distance = Math.hypot(dx, dy);
+      
+      // 位移小于阈值则判定为点击
+      if (distance < DRAG_THRESHOLD) {
+        pet.click();
+      }
+    }
+    // 移除临时监听
+    window.removeEventListener('touchend', checkTouchEnd);
   }
 
-  // 触摸结束时结束拖动
-  function handleTouchEnd() {
-    isDragging = false;
-    setAction('normal', true);
-    startAI(); // 恢复自动行为
-    window.removeEventListener('touchmove', handleTouchMove);
-    window.removeEventListener('touchend', handleTouchEnd);
-  }
-
-  // 绑定临时事件
-  window.addEventListener('touchmove', handleTouchMove);
-  window.addEventListener('touchend', handleTouchEnd);
+  window.addEventListener('touchend', checkTouchEnd);
 });
 
 // 窗口大小变化时重新计算边界
