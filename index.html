@@ -291,13 +291,13 @@ pet.addEventListener('click', (e) => {
   // 强制切换到点击动作
   setAction('click', true);
 
-  // 800ms后恢复普通待机，并重启AI
+  // 1010ms后恢复普通待机，并重启AI
   setTimeout(() => {
     if (!isDragging) {
       setAction('normal', true);
       startAI();
     }
-  }, 800);
+  }, 1010);
 });
 
 // 新增：通用的拖动初始化逻辑（抽离复用）
@@ -451,4 +451,5 @@ startAI();         // 启动自动行为
 </script>
 </body>
 </html>
+
 
